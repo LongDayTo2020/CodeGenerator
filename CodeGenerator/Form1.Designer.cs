@@ -49,6 +49,7 @@
             label8 = new Label();
             CRUDBox = new GroupBox();
             groupBox1 = new GroupBox();
+            connectionCheckBox = new CheckBox();
             constructCheckBox = new CheckBox();
             groupBox2 = new GroupBox();
             entityTextBox = new TextBox();
@@ -68,11 +69,17 @@
             label12 = new Label();
             label11 = new Label();
             label10 = new Label();
+            groupBox4 = new GroupBox();
+            label22 = new Label();
+            ConnectionTextBox = new TextBox();
+            label21 = new Label();
+            dbComboBox = new ComboBox();
             classGroupBox.SuspendLayout();
             CRUDBox.SuspendLayout();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
             groupBox3.SuspendLayout();
+            groupBox4.SuspendLayout();
             SuspendLayout();
             // 
             // classNameTextBox
@@ -245,14 +252,24 @@
             // 
             // groupBox1
             // 
+            groupBox1.Controls.Add(connectionCheckBox);
             groupBox1.Controls.Add(constructCheckBox);
             groupBox1.Controls.Add(generateButton);
             groupBox1.Location = new Point(936, 108);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(283, 237);
+            groupBox1.Size = new Size(294, 237);
             groupBox1.TabIndex = 17;
             groupBox1.TabStop = false;
             groupBox1.Text = "Set Group";
+            // 
+            // connectionCheckBox
+            // 
+            connectionCheckBox.Location = new Point(23, 66);
+            connectionCheckBox.Name = "connectionCheckBox";
+            connectionCheckBox.Size = new Size(119, 19);
+            connectionCheckBox.TabIndex = 13;
+            connectionCheckBox.Text = "Connect DB";
+            connectionCheckBox.UseVisualStyleBackColor = true;
             // 
             // constructCheckBox
             // 
@@ -443,11 +460,59 @@
             label10.TabIndex = 0;
             label10.Text = "*Class預設Info";
             // 
+            // groupBox4
+            // 
+            groupBox4.Controls.Add(label22);
+            groupBox4.Controls.Add(ConnectionTextBox);
+            groupBox4.Controls.Add(label21);
+            groupBox4.Controls.Add(dbComboBox);
+            groupBox4.Location = new Point(21, 361);
+            groupBox4.Name = "groupBox4";
+            groupBox4.Size = new Size(1209, 77);
+            groupBox4.TabIndex = 20;
+            groupBox4.TabStop = false;
+            groupBox4.Text = "DB Group";
+            // 
+            // label22
+            // 
+            label22.AutoSize = true;
+            label22.Location = new Point(313, 19);
+            label22.Name = "label22";
+            label22.Size = new Size(130, 15);
+            label22.TabIndex = 14;
+            label22.Text = "DB Connection String:";
+            // 
+            // ConnectionTextBox
+            // 
+            ConnectionTextBox.Location = new Point(313, 37);
+            ConnectionTextBox.Name = "ConnectionTextBox";
+            ConnectionTextBox.Size = new Size(874, 23);
+            ConnectionTextBox.TabIndex = 13;
+            // 
+            // label21
+            // 
+            label21.AutoSize = true;
+            label21.Location = new Point(12, 19);
+            label21.Name = "label21";
+            label21.Size = new Size(57, 15);
+            label21.TabIndex = 12;
+            label21.Text = "DB Type:";
+            // 
+            // dbComboBox
+            // 
+            dbComboBox.FormattingEnabled = true;
+            dbComboBox.Items.AddRange(new object[] { "PosrgreSql" });
+            dbComboBox.Location = new Point(12, 37);
+            dbComboBox.Name = "dbComboBox";
+            dbComboBox.Size = new Size(272, 23);
+            dbComboBox.TabIndex = 0;
+            // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1264, 366);
+            ClientSize = new Size(1264, 468);
+            Controls.Add(groupBox4);
             Controls.Add(groupBox3);
             Controls.Add(groupBox2);
             Controls.Add(groupBox1);
@@ -469,6 +534,8 @@
             groupBox2.PerformLayout();
             groupBox3.ResumeLayout(false);
             groupBox3.PerformLayout();
+            groupBox4.ResumeLayout(false);
+            groupBox4.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -514,5 +581,11 @@
         private Label label19;
         private TextBox tableNameTextBox;
         private Label label18;
+        private CheckBox connectionCheckBox;
+        private GroupBox groupBox4;
+        private Label label22;
+        private TextBox ConnectionTextBox;
+        private Label label21;
+        private ComboBox dbComboBox;
     }
 }
