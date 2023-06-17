@@ -56,7 +56,7 @@ namespace CodeGenerator
                     foreach (var item in construstList)
                     {
                         if (string.IsNullOrEmpty(item)) continue;
-                        construsts += $"_{GetLowerCamelCase(item)} = {GetLowerCamelCase(item)}" + Environment.NewLine;
+                        construsts += $"_{GetLowerCamelCase(item)} = {GetLowerCamelCase(item)};" + Environment.NewLine;
                     }
                     construsts += "     }" + Environment.NewLine;
                 }
@@ -70,47 +70,51 @@ namespace CodeGenerator
 
                 // 產生類別內容
                 string classContent = $@"
+using System.Data;
+using Dapper;
+using UserManage.Repository.Entity;
+using UserManage.Repository.Interface;
 using System;
 
 namespace {namespaceName}
 {{
-    public class {className} {interfaceClass}
+    public class {className} {interfaceClass}<{entityClass}>
     {{
         {properties}
         {construsts}
 
         public bool {createName}({entityClass} {GetLowerCamelCase(entityClass)})
         {{
-            string sql = "" {GetColumnNotNullSetting(tableName, CRUDType.Create)} ""
-            return {dbContext}.Excute(sql,{GetLowerCamelCase(entityClass)}) > 0;
+            string sql = @"" {GetColumnNotNullSetting(tableName, CRUDType.Create)} "";
+            return {dbContext}.Execute(sql,{GetLowerCamelCase(entityClass)}) > 0;
         }}
 
-        public IQuery<{entityClass}> {readName}All()
+        public IEnumerable<{entityClass}> {readName}All()
         {{
-            string sql = "" {GetColumnNotNullSetting(tableName, CRUDType.Read)} ""
+            string sql = @"" {GetColumnNotNullSetting(tableName, CRUDType.Read)} "";
             return {dbContext}.Query<{entityClass}>(sql);
         }}
 
-        public {entityClass} {readName}()
+        public {entityClass} {readName}(object {GetLowerCamelCase(entityClass)})
         {{
-            string sql = ""{GetColumnNotNullSetting(tableName, CRUDType.ReadFirst)} ""
+            string sql = @""{GetColumnNotNullSetting(tableName, CRUDType.ReadFirst)} "";
             return {dbContext}.QueryFirstOrDefault<{entityClass}>(sql);
         }}
 
-        public void {deleteName}(int id)
+        public bool {deleteName}(object id)
         {{
-            string sql = "" {GetColumnNotNullSetting(tableName, CRUDType.Delete)} ""
+            string sql = @"" {GetColumnNotNullSetting(tableName, CRUDType.Delete)} "";
             var parameters = new DynamicParameters();
             parameters.Add(""Id"", id, System.Data.DbType.Int32);
-            return {dbContext}.Excute<{entityClass}>(sql, parameters);
+            return {dbContext}.Execute(sql, parameters) > 0;
         }}
 
-        public bool {updateName}(int id, {entityClass} {GetLowerCamelCase(entityClass)})
+        public bool {updateName}(object id, {entityClass} {GetLowerCamelCase(entityClass)})
         {{
-            string sql = ""{GetColumnNotNullSetting(tableName, CRUDType.Update)}""
+            string sql = @""{GetColumnNotNullSetting(tableName, CRUDType.Update)}"";
             var parameters = new DynamicParameters({GetLowerCamelCase(entityClass)});
             parameters.Add(""Id"", id, System.Data.DbType.Int32);
-            return {dbContext}.Excute<{entityClass}>(sql, parameters) > 0;
+            return {dbContext}.Execute(sql, parameters) > 0;
         }}
     }}
 }}
@@ -144,6 +148,17 @@ namespace {namespaceName}
             return result;
         }
 
+        //把底線分割轉大駝峰
+        private static string ConvertToCamelCase(string input)
+        {
+            string[] words = input.Split('_');
+            for (int i = 0; i < words.Length; i++)
+            {
+                words[i] = char.ToUpper(words[i][0]) + words[i].Substring(1);
+            }
+            return string.Join("", words);
+        }
+
         private string GetColumnNotNullSetting(string tableName, CRUDType crudTyps = CRUDType.Read)
         {
             var result = "";
@@ -156,7 +171,7 @@ namespace {namespaceName}
                   (SELECT 1
                    FROM information_schema.key_column_usage AS kcu
                             JOIN information_schema.table_constraints AS tc ON kcu.constraint_name = tc.constraint_name
-                   WHERE kcu.table_name = 'sys_users' -- 指定資料表名稱
+                   WHERE kcu.table_name = '{tableName}' -- 指定資料表名稱
                      AND kcu.column_name = table_sechma.column_name -- 指定欄位名稱
                      AND tc.constraint_type = 'PRIMARY KEY' -- 判斷是否為主鍵
                   ) as is_primary_key
@@ -179,11 +194,12 @@ namespace {namespaceName}
             switch (crudTyps)
             {
                 case CRUDType.Create:
-                    var createCombinedColumes = columnList.Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    var createCombinedColumes = columnList.Where(x => !x.Item2).Select((column, index) => $" {column.Item1} ").ToArray();
+                    var createValueCombinedColumes = columnList.Where(x => !x.Item2).Select((column, index) => $" @{ConvertToCamelCase(column.Item1)} ").ToArray();
                     result += $" INSERT INTO {tableName} " + " ( " + Environment.NewLine;
-                    result += $" {string.Join(splitText, columnList.Select(q => q.Item1).ToArray())} )" + Environment.NewLine;
+                    result += $" {string.Join(splitText, createCombinedColumes)} )" + Environment.NewLine;
                     result += " VALUES ( ";
-                    result += string.Join(splitText, columnList.Select(q => "@" + q.Item1).ToArray()) + ") ";
+                    result += string.Join(splitText, createValueCombinedColumes) + ") ";
                     break;
                 case CRUDType.Read:
                     result += $" SELECT " + Environment.NewLine;
@@ -191,27 +207,27 @@ namespace {namespaceName}
                     result += $" FROM {tableName} ";
                     break;
                 case CRUDType.ReadFirst:
-                    var readFirstCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
-                    result += $" SELECT TOP 1 " + Environment.NewLine;
-                    result += $" {string.Join(splitText, columnList.Select(q => q.Item1).ToArray())} )" + Environment.NewLine;
+                    var readFirstCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{ConvertToCamelCase(column.Item1)} ").ToArray();
+                    result += $" SELECT  " + Environment.NewLine;
+                    result += $" {string.Join(splitText, columnList.Select(q => q.Item1).ToArray())} " + Environment.NewLine;
                     result += $" FROM {tableName} " + Environment.NewLine;
                     result += " WHERE ";
-                    result += string.Join(splitText, readFirstCombinedColumes) + ") ";
+                    result += string.Join(" AND " + splitText, readFirstCombinedColumes) + " LIMIT 1 ";
                     break;
                 case CRUDType.Update:
-                    var updateCombinedColumes = columnList.Where(x => !x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
-                    var updateWhereCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    var updateCombinedColumes = columnList.Where(x => !x.Item2).Select((column, index) => @$" {column.Item1} = @{ConvertToCamelCase(column.Item1)} ").ToArray();
+                    var updateWhereCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{ConvertToCamelCase(column.Item1)}  ").ToArray();
                     result += $" UPDATE {tableName} " + Environment.NewLine;
                     result += " SET ";
-                    result += string.Join(splitText, updateCombinedColumes) + ") " + Environment.NewLine;
+                    result += string.Join(splitText, updateCombinedColumes) + Environment.NewLine;
                     result += " WHERE ";
-                    result += string.Join(splitText, updateWhereCombinedColumes) + ") ";
+                    result += string.Join(splitText, updateWhereCombinedColumes);
                     break;
                 case CRUDType.Delete:
-                    var deleteCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    var deleteCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{ConvertToCamelCase(column.Item1)} ").ToArray();
                     result += $" DELETE {tableName} " + Environment.NewLine;
                     result += $" WHERE " + Environment.NewLine;
-                    result += string.Join(splitText, deleteCombinedColumes) + ") ";
+                    result += string.Join(splitText, deleteCombinedColumes);
                     break;
                 default:
                     break;
