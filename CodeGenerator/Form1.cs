@@ -1,10 +1,13 @@
-using System.ComponentModel.DataAnnotations;
+using Npgsql;
 using System.Globalization;
+using static Npgsql.Replication.PgOutput.Messages.RelationMessage;
 
 namespace CodeGenerator
 {
     public partial class MainForm : Form
     {
+        private string connectstrings = "";
+        private bool isConnectionCheckBox = false;
         public MainForm()
         {
             InitializeComponent();
@@ -27,6 +30,8 @@ namespace CodeGenerator
                 string tableName = string.IsNullOrEmpty(tableNameTextBox?.Text) ? "TableName" : tableNameTextBox?.Text ?? "";
                 string dbContext = string.IsNullOrEmpty(dbContextTextBox?.Text) ? "dbContext" : dbContextTextBox?.Text ?? "";
                 string entityClass = string.IsNullOrEmpty(entityTextBox?.Text) ? "dbClass" : entityTextBox?.Text ?? "";
+                connectstrings = string.IsNullOrEmpty(ConnectionTextBox?.Text) ? "" : ConnectionTextBox?.Text ?? "";
+                isConnectionCheckBox = connectionCheckBox.Checked;
                 string properties = "";
                 var isConstructCheckBox = constructCheckBox.Checked;
                 var construstList = new List<string>();
@@ -76,27 +81,25 @@ namespace {namespaceName}
 
         public bool {createName}({entityClass} {GetLowerCamelCase(entityClass)})
         {{
-            string sql = @"" INSERT INTO {tableName} ()
-VALUES ()
-""
+            string sql = "" {GetColumnNotNullSetting(tableName, CRUDType.Create)} ""
             return {dbContext}.Excute(sql,{GetLowerCamelCase(entityClass)}) > 0;
         }}
 
         public IQuery<{entityClass}> {readName}All()
         {{
-            string sql = @"" SELECT * FROM {tableName} ""
+            string sql = "" {GetColumnNotNullSetting(tableName, CRUDType.Read)} ""
             return {dbContext}.Query<{entityClass}>(sql);
         }}
 
         public {entityClass} {readName}()
         {{
-            string sql = @"" SELECT TOP 1 * FROM {tableName} ""
+            string sql = ""{GetColumnNotNullSetting(tableName, CRUDType.ReadFirst)} ""
             return {dbContext}.QueryFirstOrDefault<{entityClass}>(sql);
         }}
 
         public void {deleteName}(int id)
         {{
-            string sql = @"" DELETE {tableName} WHERE ID = @Id ""
+            string sql = "" {GetColumnNotNullSetting(tableName, CRUDType.Delete)} ""
             var parameters = new DynamicParameters();
             parameters.Add(""Id"", id, System.Data.DbType.Int32);
             return {dbContext}.Excute<{entityClass}>(sql, parameters);
@@ -104,10 +107,7 @@ VALUES ()
 
         public bool {updateName}(int id, {entityClass} {GetLowerCamelCase(entityClass)})
         {{
-            string sql = @"" Update {tableName} 
-SET
-
-WHERE ID = @Id ""
+            string sql = ""{GetColumnNotNullSetting(tableName, CRUDType.Update)}""
             var parameters = new DynamicParameters({GetLowerCamelCase(entityClass)});
             parameters.Add(""Id"", id, System.Data.DbType.Int32);
             return {dbContext}.Excute<{entityClass}>(sql, parameters) > 0;
@@ -144,6 +144,91 @@ WHERE ID = @Id ""
             return result;
         }
 
+        private string GetColumnNotNullSetting(string tableName, CRUDType crudTyps = CRUDType.Read)
+        {
+            var result = "";
+            if (!isConnectionCheckBox) return result;
+            using var connection = new NpgsqlConnection(connectstrings);
+            // 開啟連線
+            connection.Open();
+            string sqlQuery = $@"
+           SELECT table_sechma.*,
+                  (SELECT 1
+                   FROM information_schema.key_column_usage AS kcu
+                            JOIN information_schema.table_constraints AS tc ON kcu.constraint_name = tc.constraint_name
+                   WHERE kcu.table_name = 'sys_users' -- 指定資料表名稱
+                     AND kcu.column_name = table_sechma.column_name -- 指定欄位名稱
+                     AND tc.constraint_type = 'PRIMARY KEY' -- 判斷是否為主鍵
+                  ) as is_primary_key
+            FROM information_schema.columns as table_sechma
+            WHERE table_name = '{tableName}'
+            ";
 
+            using var command = new NpgsqlCommand(sqlQuery, connection);
+            using var reader = command.ExecuteReader();
+            var columnList = new List<(string, bool)>();
+            while (reader.Read())
+            {
+                // 讀取資料列中的欄位值
+                var column1Name = reader.GetString(reader.GetOrdinal("column_name"));
+                var isPrimaryKey = reader.GetValue(reader.GetOrdinal("is_primary_key")) != DBNull.Value;
+                columnList.Add((column1Name, isPrimaryKey));
+            }
+
+            var splitText = $"{Environment.NewLine},";
+            switch (crudTyps)
+            {
+                case CRUDType.Create:
+                    var createCombinedColumes = columnList.Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    result += $" INSERT INTO {tableName} " + " ( " + Environment.NewLine;
+                    result += $" {string.Join(splitText, columnList.Select(q => q.Item1).ToArray())} )" + Environment.NewLine;
+                    result += " VALUES ( ";
+                    result += string.Join(splitText, columnList.Select(q => "@" + q.Item1).ToArray()) + ") ";
+                    break;
+                case CRUDType.Read:
+                    result += $" SELECT " + Environment.NewLine;
+                    result += $" {string.Join(splitText, columnList.Select(q => q.Item1).ToArray())} " + Environment.NewLine;
+                    result += $" FROM {tableName} ";
+                    break;
+                case CRUDType.ReadFirst:
+                    var readFirstCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    result += $" SELECT TOP 1 " + Environment.NewLine;
+                    result += $" {string.Join(splitText, columnList.Select(q => q.Item1).ToArray())} )" + Environment.NewLine;
+                    result += $" FROM {tableName} " + Environment.NewLine;
+                    result += " WHERE ";
+                    result += string.Join(splitText, readFirstCombinedColumes) + ") ";
+                    break;
+                case CRUDType.Update:
+                    var updateCombinedColumes = columnList.Where(x => !x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    var updateWhereCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    result += $" UPDATE {tableName} " + Environment.NewLine;
+                    result += " SET ";
+                    result += string.Join(splitText, updateCombinedColumes) + ") " + Environment.NewLine;
+                    result += " WHERE ";
+                    result += string.Join(splitText, updateWhereCombinedColumes) + ") ";
+                    break;
+                case CRUDType.Delete:
+                    var deleteCombinedColumes = columnList.Where(x => x.Item2).Select((column, index) => @$" {column.Item1} = @{column.Item1}").ToArray();
+                    result += $" DELETE {tableName} " + Environment.NewLine;
+                    result += $" WHERE " + Environment.NewLine;
+                    result += string.Join(splitText, deleteCombinedColumes) + ") ";
+                    break;
+                default:
+                    break;
+            }
+
+            return result;
+        }
+
+        private enum CRUDType
+        {
+            Create = 0,
+            Read = 1,
+            ReadFirst = 2,
+            Update = 3,
+            Delete = 4
+        }
     }
+
+
 }
